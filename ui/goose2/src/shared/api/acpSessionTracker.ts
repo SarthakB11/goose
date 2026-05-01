@@ -57,6 +57,7 @@ export async function prepareSession(
   workingDir: string,
   personaId?: string,
   projectId?: string,
+  knownNew = false,
 ): Promise<string> {
   const sid = sessionId.slice(0, 8);
   const key = makeKey(sessionId, personaId);
@@ -87,19 +88,22 @@ export async function prepareSession(
 
   let gooseSessionId: string | null = null;
 
-  const tLoad = performance.now();
-  try {
-    await acpApi.loadSession(sessionId, workingDir);
-    gooseSessionId = sessionId;
-    perfLog(
-      `[perf:prepare] ${sid} tracker loadSession ok in ${(performance.now() - tLoad).toFixed(1)}ms`,
-    );
-  } catch {
-    perfLog(
-      `[perf:prepare] ${sid} tracker loadSession failed in ${(performance.now() - tLoad).toFixed(1)}ms → newSession`,
-    );
+  if (!knownNew) {
+    const tLoad = performance.now();
+    try {
+      await acpApi.loadSession(sessionId, workingDir);
+      gooseSessionId = sessionId;
+      perfLog(
+        `[perf:prepare] ${sid} tracker loadSession ok in ${(performance.now() - tLoad).toFixed(1)}ms`,
+      );
+    } catch {
+      perfLog(
+        `[perf:prepare] ${sid} tracker loadSession failed in ${(performance.now() - tLoad).toFixed(1)}ms → newSession`,
+      );
+    }
   }
 
+  let providerApplied = false;
   if (!gooseSessionId) {
     const tNew = performance.now();
     const response = await acpApi.newSession(
@@ -112,14 +116,17 @@ export async function prepareSession(
     perfLog(
       `[perf:prepare] ${sid} tracker newSession done in ${(performance.now() - tNew).toFixed(1)}ms (goose_sid=${gooseSessionId.slice(0, 8)})`,
     );
+    providerApplied = true;
   }
 
-  const gooseSid = gooseSessionId.slice(0, 8);
-  const tProv = performance.now();
-  await acpApi.setProvider(gooseSessionId, providerId);
-  perfLog(
-    `[perf:prepare] ${sid} tracker setProvider(${providerId}) in ${(performance.now() - tProv).toFixed(1)}ms (goose_sid=${gooseSid})`,
-  );
+  if (!providerApplied) {
+    const gooseSid = gooseSessionId.slice(0, 8);
+    const tProv = performance.now();
+    await acpApi.setProvider(gooseSessionId, providerId);
+    perfLog(
+      `[perf:prepare] ${sid} tracker setProvider(${providerId}) in ${(performance.now() - tProv).toFixed(1)}ms (goose_sid=${gooseSid})`,
+    );
+  }
 
   const entry = { gooseSessionId, providerId, workingDir };
   prepared.set(key, entry);

@@ -16,6 +16,10 @@ import { useAgentStore } from "@/features/agents/stores/agentStore";
 import { useProjectStore } from "@/features/projects/stores/projectStore";
 import { findExistingDraft } from "@/features/chat/lib/newChat";
 import { DEFAULT_CHAT_TITLE } from "@/features/chat/lib/sessionTitle";
+import {
+  resolveSessionModelPreference,
+  sanitizeSessionModelPreference,
+} from "@/features/chat/lib/sessionModelPreference";
 import { useAppStartup } from "./hooks/useAppStartup";
 import { useHomeSessionStateSync } from "./hooks/useHomeSessionStateSync";
 import { loadStoredHomeSessionId } from "./lib/homeSessionStorage";
@@ -271,12 +275,6 @@ export function AppShell({ children }: { children?: React.ReactNode }) {
       );
       const providerId =
         project?.preferredProvider ?? agentStore.selectedProvider ?? "goose";
-      const sessionModelPreference =
-        await resolveSupportedSessionModelPreference(
-          providerId,
-          providerInventoryEntries,
-          project?.preferredModel ?? undefined,
-        );
       const sessionState = useChatSessionStore.getState();
       const chatState = useChatStore.getState();
       const existingDraft = findExistingDraft({
@@ -300,10 +298,39 @@ export function AppShell({ children }: { children?: React.ReactNode }) {
         return existingDraft;
       }
 
-      const workingDir = await resolveSessionCwd(project);
+      if (project) {
+        const modelPreference = resolveSessionModelPreference({
+          providerId,
+          preferredModel: project.preferredModel ?? undefined,
+        });
+        const sessionModelPreference = sanitizeSessionModelPreference(
+          modelPreference,
+          providerInventoryEntries.get(modelPreference.providerId),
+        );
+        const session = sessionStore.createLocalSession({
+          title,
+          projectId: project.id,
+          providerId: sessionModelPreference.providerId,
+          modelId: sessionModelPreference.modelId,
+          modelName: sessionModelPreference.modelName,
+        });
+        sessionStore.setActiveSession(session.id);
+        setActiveView("chat");
+        chatStore.setActiveSession(session.id);
+        perfLog(
+          `[perf:newtab] ${session.id.slice(0, 8)} created local project session in ${(performance.now() - tStart).toFixed(1)}ms`,
+        );
+        return session;
+      }
+
+      const sessionModelPreference =
+        await resolveSupportedSessionModelPreference(
+          providerId,
+          providerInventoryEntries,
+        );
+      const workingDir = await resolveSessionCwd(null);
       const session = await sessionStore.createSession({
         title,
-        projectId: project?.id,
         providerId: sessionModelPreference.providerId,
         workingDir,
         modelId: sessionModelPreference.modelId,
@@ -464,14 +491,21 @@ export function AppShell({ children }: { children?: React.ReactNode }) {
         if (!workingDir) {
           return;
         }
-        await acpPrepareSession(
+        const gooseSessionId = await acpPrepareSession(
           sessionId,
           session.providerId ?? agentStore.selectedProvider ?? "goose",
           workingDir,
           {
             personaId: session.personaId,
+            ...(projectId ? { projectId } : {}),
+            ...(!session.acpSessionId ? { knownNew: true } : {}),
           },
         );
+        if (gooseSessionId && session.acpSessionId !== gooseSessionId) {
+          sessionStore.updateSession(sessionId, {
+            acpSessionId: gooseSessionId,
+          });
+        }
       })().catch((error) => {
         console.error(
           "Failed to update ACP session project working directory:",

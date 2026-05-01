@@ -268,6 +268,7 @@ export function useResolvedAgentModelPicker({
       const previousModelName = session.modelName;
       const providerChanged =
         Boolean(nextProviderId) && nextProviderId !== session.providerId;
+      const needsPreparation = providerChanged || !session.acpSessionId;
 
       if (providerChanged && nextProviderId) {
         useChatSessionStore
@@ -283,7 +284,7 @@ export function useResolvedAgentModelPicker({
 
       void (async () => {
         try {
-          if (providerChanged && nextProviderId) {
+          if (needsPreparation && nextProviderId) {
             await prepareSelectedProvider(nextProviderId);
           }
           await acpSetModel(sessionId, modelId);

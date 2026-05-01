@@ -1,13 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mockLoadSession = vi.fn();
+const mockNewSession = vi.fn();
+const mockSetProvider = vi.fn();
 
 vi.mock("../acpApi", () => ({
   listProviders: vi.fn(),
   prompt: vi.fn(),
   setModel: vi.fn(),
+  setProvider: (...args: unknown[]) => mockSetProvider(...args),
   listSessions: vi.fn(),
   loadSession: (...args: unknown[]) => mockLoadSession(...args),
+  newSession: (...args: unknown[]) => mockNewSession(...args),
   exportSession: vi.fn(),
   importSession: vi.fn(),
   forkSession: vi.fn(),
@@ -53,5 +57,31 @@ describe("acpLoadSession", () => {
       "local-session",
     );
     expect(sessionTracker.getLocalSessionId("goose-session-2")).toBeNull();
+  });
+
+  it("creates a known-new session without probing load or resetting provider", async () => {
+    mockNewSession.mockResolvedValueOnce({ sessionId: "goose-session-1" });
+
+    const sessionTracker = await import("../acpSessionTracker");
+    const { acpPrepareSession } = await import("../acp");
+
+    await expect(
+      acpPrepareSession("local-session", "openai", "/tmp/project", {
+        projectId: "project-1",
+        knownNew: true,
+      }),
+    ).resolves.toBe("goose-session-1");
+
+    expect(mockLoadSession).not.toHaveBeenCalled();
+    expect(mockNewSession).toHaveBeenCalledWith(
+      "/tmp/project",
+      "openai",
+      "project-1",
+      undefined,
+    );
+    expect(mockSetProvider).not.toHaveBeenCalled();
+    expect(sessionTracker.getGooseSessionId("local-session")).toBe(
+      "goose-session-1",
+    );
   });
 });

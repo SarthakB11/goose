@@ -76,6 +76,9 @@ interface CreateSessionOpts {
 
 interface ChatSessionStoreActions {
   createSession: (opts?: CreateSessionOpts) => Promise<ChatSession>;
+  createLocalSession: (
+    opts?: Omit<CreateSessionOpts, "workingDir">,
+  ) => ChatSession;
   loadSessions: () => Promise<void>;
   updateSession: (id: string, patch: Partial<ChatSession>) => void;
   addSession: (session: ChatSession) => void;
@@ -154,7 +157,7 @@ export const useChatSessionStore = create<ChatSessionStore>((set, get) => ({
     const { sessionId } = await acpCreateSession(providerId, opts.workingDir, {
       personaId: opts.personaId,
       modelId: opts.modelId,
-      projectId: opts.projectId,
+      ...(opts.projectId ? { projectId: opts.projectId } : {}),
     });
     const chatSession: ChatSession = {
       id: sessionId,
@@ -173,13 +176,35 @@ export const useChatSessionStore = create<ChatSessionStore>((set, get) => ({
     return chatSession;
   },
 
+  createLocalSession: (opts) => {
+    const now = new Date().toISOString();
+    const chatSession: ChatSession = {
+      id: crypto.randomUUID(),
+      title: opts?.title ?? DEFAULT_CHAT_TITLE,
+      projectId: opts?.projectId,
+      providerId: opts?.providerId ?? "goose",
+      personaId: opts?.personaId,
+      modelId: opts?.modelId,
+      modelName: opts?.modelName,
+      createdAt: now,
+      updatedAt: now,
+      messageCount: 0,
+    };
+    set((state) => ({ sessions: [chatSession, ...state.sessions] }));
+    return chatSession;
+  },
+
   loadSessions: async () => {
     set({ isLoading: true });
     try {
-      const acpSessions = await acpListSessions();
-      const sessions = sortByUpdatedAtDesc(
-        acpSessions.map(acpSessionToChatSession),
+      const localSessions = get().sessions.filter(
+        (session) => !session.acpSessionId,
       );
+      const acpSessions = await acpListSessions();
+      const sessions = sortByUpdatedAtDesc([
+        ...localSessions,
+        ...acpSessions.map(acpSessionToChatSession),
+      ]);
       const activeSessionId = get().activeSessionId;
       const activeSessionStillExists =
         activeSessionId == null ||

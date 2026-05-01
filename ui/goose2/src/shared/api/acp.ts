@@ -30,6 +30,7 @@ export interface AcpSendMessageOptions {
 export interface AcpPrepareSessionOptions {
   personaId?: string;
   projectId?: string;
+  knownNew?: boolean;
 }
 
 export interface AcpCreateSessionOptions extends AcpPrepareSessionOptions {
@@ -154,6 +155,7 @@ export async function acpPrepareSession(
     workingDir,
     options.personaId,
     options.projectId,
+    options.knownNew,
   );
   perfLog(
     `[perf:prepare] ${sid} acpPrepareSession done in ${(performance.now() - t0).toFixed(1)}ms`,
@@ -171,7 +173,7 @@ export async function acpCreateSession(
     localSessionId,
     providerId,
     workingDir,
-    options,
+    { ...options, knownNew: true },
   );
   sessionTracker.registerSession(
     gooseSessionId,

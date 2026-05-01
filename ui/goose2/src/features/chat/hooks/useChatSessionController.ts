@@ -24,11 +24,11 @@ import {
   supportsContextCompactionControls,
 } from "../lib/autoCompact";
 import { resolveSessionCwd } from "@/features/projects/lib/sessionCwdSelection";
-import { acpPrepareSession, acpSetModel } from "@/shared/api/acp";
 import {
   useResolvedAgentModelPicker,
   type PreferredModelSelection,
 } from "./useResolvedAgentModelPicker";
+import { prepareBoundSession } from "./prepareBoundSession";
 
 interface UseChatSessionControllerOptions {
   sessionId: string | null;
@@ -164,6 +164,7 @@ export function useChatSessionController({
       nextWorkspacePath = activeWorkspace?.path,
       personaId = selectedPersonaId ?? undefined,
       modelSelection?: PreferredModelSelection | null,
+      nextProjectId = nextProject?.id ?? session?.projectId ?? null,
     ) => {
       if (!sessionId) {
         return;
@@ -172,28 +173,22 @@ export function useChatSessionController({
         nextProject,
         nextWorkspacePath,
       );
-      await acpPrepareSession(sessionId, providerId, workingDir, { personaId });
-      if (!modelSelection?.id) {
-        return;
-      }
-
-      const sessionStore = useChatSessionStore.getState();
-      const liveSession = sessionStore.getSession(sessionId);
-      const modelAlreadyApplied =
-        liveSession?.modelId === modelSelection.id &&
-        liveSession?.modelName === modelSelection.name;
-
-      if (modelAlreadyApplied) {
-        return;
-      }
-
-      await acpSetModel(sessionId, modelSelection.id);
-      sessionStore.updateSession(sessionId, {
-        modelId: modelSelection.id,
-        modelName: modelSelection.name,
+      await prepareBoundSession({
+        sessionId,
+        providerId,
+        workingDir,
+        personaId,
+        projectId: nextProjectId,
+        modelSelection,
       });
     },
-    [activeWorkspace?.path, project, selectedPersonaId, sessionId],
+    [
+      activeWorkspace?.path,
+      project,
+      selectedPersonaId,
+      session?.projectId,
+      sessionId,
+    ],
   );
   const prepareSelectedProvider = useCallback(
     (providerId: string, modelSelection?: PreferredModelSelection | null) =>
@@ -203,6 +198,7 @@ export function useChatSessionController({
         activeWorkspace?.path,
         selectedPersonaId ?? undefined,
         modelSelection,
+        project?.id ?? null,
       ),
     [activeWorkspace?.path, prepareCurrentSession, project, selectedPersonaId],
   );
@@ -330,6 +326,7 @@ export function useChatSessionController({
         activeWorkspace?.path,
         selectedPersonaId ?? undefined,
         effectiveModelSelection,
+        projectId,
       ).catch((error) => {
         console.error("Failed to update ACP session working directory:", error);
       });
@@ -434,6 +431,8 @@ export function useChatSessionController({
               project,
               activeWorkspace?.path,
               personaId,
+              effectiveModelSelection,
+              project?.id ?? session?.projectId ?? null,
             )
         : undefined,
     },
@@ -726,6 +725,7 @@ export function useChatSessionController({
             activeWorkspace?.path,
             nextPersonaId,
             pendingModelSelection,
+            nextProjectId ?? null,
           );
           if (cancelled) {
             return;

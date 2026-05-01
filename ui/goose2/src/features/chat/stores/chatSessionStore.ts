@@ -2,6 +2,8 @@ import { create } from "zustand";
 import {
   acpCreateSession,
   acpListSessions,
+  acpPrepareSession,
+  acpSetModel,
   type AcpSessionInfo,
 } from "@/shared/api/acp";
 import type { Session } from "@/shared/types/chat";
@@ -74,11 +76,26 @@ interface CreateSessionOpts {
   modelName?: string;
 }
 
+export interface SessionBindingModel {
+  id: string;
+  name?: string;
+}
+
+interface PrepareSessionBindingArgs {
+  sessionId: string;
+  providerId: string;
+  workingDir: string;
+  personaId?: string;
+  projectId?: string | null;
+  model?: SessionBindingModel | null;
+}
+
 interface ChatSessionStoreActions {
   createSession: (opts?: CreateSessionOpts) => Promise<ChatSession>;
   createLocalSession: (
     opts?: Omit<CreateSessionOpts, "workingDir">,
   ) => ChatSession;
+  prepareSessionBinding: (args: PrepareSessionBindingArgs) => Promise<void>;
   loadSessions: () => Promise<void>;
   updateSession: (id: string, patch: Partial<ChatSession>) => void;
   addSession: (session: ChatSession) => void;
@@ -192,6 +209,52 @@ export const useChatSessionStore = create<ChatSessionStore>((set, get) => ({
     };
     set((state) => ({ sessions: [chatSession, ...state.sessions] }));
     return chatSession;
+  },
+
+  prepareSessionBinding: async ({
+    sessionId,
+    providerId,
+    workingDir,
+    personaId,
+    projectId,
+    model,
+  }) => {
+    const sessionBeforePrepare = get().getSession(sessionId);
+    const gooseSessionId = await acpPrepareSession(
+      sessionId,
+      providerId,
+      workingDir,
+      {
+        personaId,
+        ...(projectId ? { projectId } : {}),
+        ...(!sessionBeforePrepare?.acpSessionId ? { knownNew: true } : {}),
+      },
+    );
+    if (
+      gooseSessionId &&
+      get().getSession(sessionId)?.acpSessionId !== gooseSessionId
+    ) {
+      get().updateSession(sessionId, { acpSessionId: gooseSessionId });
+    }
+    if (!model?.id) {
+      return;
+    }
+
+    const liveSession = get().getSession(sessionId);
+    const modelAlreadyApplied =
+      Boolean(sessionBeforePrepare?.acpSessionId) &&
+      liveSession?.modelId === model.id &&
+      liveSession?.modelName === model.name;
+
+    if (modelAlreadyApplied) {
+      return;
+    }
+
+    await acpSetModel(sessionId, model.id);
+    get().updateSession(sessionId, {
+      modelId: model.id,
+      modelName: model.name,
+    });
   },
 
   loadSessions: async () => {

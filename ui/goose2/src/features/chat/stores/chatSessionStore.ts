@@ -139,6 +139,41 @@ function sortByUpdatedAtDesc(sessions: ChatSession[]): ChatSession[] {
   );
 }
 
+function mergeAcpSessionsWithLocalState(
+  currentSessions: ChatSession[],
+  acpSessions: AcpSessionInfo[],
+): ChatSession[] {
+  const localSessionByAcpId = new Map<string, ChatSession>();
+  for (const session of currentSessions) {
+    if (session.acpSessionId && session.id !== session.acpSessionId) {
+      localSessionByAcpId.set(session.acpSessionId, session);
+    }
+  }
+
+  const localOnlySessions = currentSessions.filter(
+    (session) => !session.acpSessionId,
+  );
+  const mergedAcpSessions = acpSessions.map((session) => {
+    const chatSession = acpSessionToChatSession(session);
+    const localSession = localSessionByAcpId.get(session.sessionId);
+
+    if (!localSession) {
+      return chatSession;
+    }
+
+    return {
+      ...chatSession,
+      id: localSession.id,
+      modelName:
+        localSession.modelId === chatSession.modelId
+          ? localSession.modelName
+          : undefined,
+    };
+  });
+
+  return sortByUpdatedAtDesc([...localOnlySessions, ...mergedAcpSessions]);
+}
+
 export function sessionToChatSession(session: Session): ChatSession {
   return {
     id: session.id,
@@ -260,14 +295,11 @@ export const useChatSessionStore = create<ChatSessionStore>((set, get) => ({
   loadSessions: async () => {
     set({ isLoading: true });
     try {
-      const localSessions = get().sessions.filter(
-        (session) => !session.acpSessionId,
-      );
       const acpSessions = await acpListSessions();
-      const sessions = sortByUpdatedAtDesc([
-        ...localSessions,
-        ...acpSessions.map(acpSessionToChatSession),
-      ]);
+      const sessions = mergeAcpSessionsWithLocalState(
+        get().sessions,
+        acpSessions,
+      );
       const activeSessionId = get().activeSessionId;
       const activeSessionStillExists =
         activeSessionId == null ||

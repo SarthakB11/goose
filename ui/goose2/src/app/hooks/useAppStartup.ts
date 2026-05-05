@@ -134,7 +134,11 @@ export function useAppStartup() {
         setActiveSession(null);
       };
 
-      await Promise.allSettled([loadDistroBundle(), loadProviderCatalog()]);
+      // Catalog loading has its own fallback/error state and should not block
+      // sessions, personas, or configured provider inventory during startup.
+      void loadProviderCatalog();
+
+      await loadDistroBundle();
 
       const providersAndInventoryLoad = loadProvidersAndInventory();
 
@@ -143,6 +147,8 @@ export function useAppStartup() {
         providersAndInventoryLoad,
         loadSessionState(),
       ]);
+      // Background refresh updates stale inventory after the first usable
+      // provider list is available.
       void providersAndInventoryLoad.then(async (entries) => {
         try {
           const { backgroundRefreshInventory } = await import(

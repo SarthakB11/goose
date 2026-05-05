@@ -19,6 +19,8 @@ import {
   getModelProviders,
 } from "@/features/providers/providerCatalog";
 import { useCredentials } from "@/features/providers/hooks/useCredentials";
+import { useDistroStore } from "@/features/settings/stores/distroStore";
+import { filterModelProvidersForDistro } from "@/features/providers/distroProviderConstraints";
 import { useCustomProviders } from "@/features/providers/hooks/useCustomProviders";
 import {
   CustomProviderChoice,
@@ -35,6 +37,7 @@ import type {
 import { useProviderInventoryStore } from "@/features/providers/stores/providerInventoryStore";
 import { AgentProviderCard } from "./AgentProviderCard";
 import { ModelProviderRow } from "./ModelProviderRow";
+import { SettingsPage } from "@/shared/ui/SettingsPage";
 import {
   catalogEntryToTemplate,
   formValueToDraft,
@@ -99,6 +102,7 @@ interface PendingCustomProviderDelete {
 
 export function ProvidersSettings() {
   const { t } = useTranslation(["settings", "common"]);
+  const distro = useDistroStore((state) => state.manifest);
   const [showAllModels, setShowAllModels] = useState(false);
   const [modelOrder, setModelOrder] = useState<string[] | null>(null);
   const [customDialogOpen, setCustomDialogOpen] = useState(false);
@@ -136,8 +140,12 @@ export function ProvidersSettings() {
   );
 
   const allModels = useMemo(
-    () => toDisplayInfo(getModelProviders(), configuredIds),
-    [configuredIds],
+    () =>
+      toDisplayInfo(
+        filterModelProvidersForDistro(getModelProviders(), distro),
+        configuredIds,
+      ),
+    [configuredIds, distro],
   );
 
   const sortedModels = useMemo(() => {
@@ -306,13 +314,21 @@ export function ProvidersSettings() {
   }
 
   return (
-    <div>
-      <h3 className="text-lg font-semibold font-display tracking-tight">
-        {t("providers.title")}
-      </h3>
-
-      <Separator className="my-4" />
-
+    <SettingsPage
+      title={t("providers.title")}
+      actions={
+        <Button
+          type="button"
+          variant="outline"
+          size="xxs"
+          onClick={() => void openCreateCustomProvider()}
+          leftIcon={<IconPlus />}
+          className="shrink-0"
+        >
+          {t("providers.custom.addButton")}
+        </Button>
+      }
+    >
       <section>
         <div className="mb-3">
           <h4 className="text-sm font-semibold">
@@ -334,34 +350,20 @@ export function ProvidersSettings() {
 
       <section>
         <div className="mb-3">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <div className="flex items-center gap-2">
-                <h4 className="text-sm font-semibold">
-                  {t("providers.models.title")}
-                </h4>
-                {loading ? (
-                  <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
-                    <Spinner className="size-3 text-accent" />
-                    {t("providers.models.checkingStatus")}
-                  </span>
-                ) : null}
-              </div>
-              <p className="mt-0.5 text-xs text-muted-foreground">
-                {t("providers.models.description")}
-              </p>
-            </div>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => void openCreateCustomProvider()}
-              leftIcon={<IconPlus />}
-              className="shrink-0"
-            >
-              {t("providers.custom.addButton")}
-            </Button>
+          <div className="flex items-center gap-2">
+            <h4 className="text-sm font-semibold">
+              {t("providers.models.title")}
+            </h4>
+            {loading ? (
+              <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+                <Spinner className="size-3 text-brand" />
+                {t("providers.models.checkingStatus")}
+              </span>
+            ) : null}
           </div>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            {t("providers.models.description")}
+          </p>
         </div>
 
         {customProviderError ? (
@@ -487,6 +489,6 @@ export function ProvidersSettings() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
+    </SettingsPage>
   );
 }
